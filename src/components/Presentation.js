@@ -10,14 +10,38 @@ const socket = io('http://localhost:3001');
 const Presentation = () => {
     const canvasRef = useRef(null);
     const location = useLocation();
-    const { nickname, presentationId } = location.state;
+    const { nickname, presentationId, role } = location.state;
     const [isDrawing, setIsDrawing] = useState(false);
-    const [tool, setTool] = useState('pen'); // Tool state to select between pen, rectangle, etc.
+    const [tool, setTool] = useState('pen');
     const [startPosition, setStartPosition] = useState({ x: 0, y: 0 });
+    const [users, setUsers] = useState({});
+    const [currentRole, setCurrentRole] = useState(role);
 
     useEffect(() => {
         // Join the presentation when the component mounts
         socket.emit('join_presentation', { presentationId, nickname });
+
+        // Receive the list of connected users
+        socket.on('user_list', (connectedUsers) => {
+            console.log('Received user list:', connectedUsers);
+            setUsers(connectedUsers); // Update state with the user list
+        });
+
+        // Listen for the role update broadcast
+        socket.on('role_updated', ({ userId, newRole }) => {
+            console.log(`Received role update for user ${userId}: ${newRole}`);
+            
+            // Update the local user list with the new role
+            setUsers(prevUsers => ({
+                ...prevUsers,
+                [userId]: { ...prevUsers[userId], role: newRole }
+            }));
+
+            // If the current user is the one whose role was updated, update their role in state
+            if (userId === socket.id) {
+                setCurrentRole(newRole);
+            }
+        });
 
         // Receive and draw existing canvas data when joining
         socket.on('canvas_data', (drawings) => {
@@ -42,19 +66,22 @@ const Presentation = () => {
         return () => {
             socket.off('canvas_data');
             socket.off('drawing');
+            socket.off('user_list');
+            socket.off('role_updated');
         };
     }, [presentationId, nickname]);
 
-    // Start drawing
     const startDrawing = ({ nativeEvent }) => {
+        if (currentRole !== 'Editor') return; // Allow only editors to draw
+
         const { offsetX, offsetY } = nativeEvent;
         setStartPosition({ x: offsetX, y: offsetY });
         setIsDrawing(true);
     };
 
-    // Handle drawing on the canvas
     const draw = ({ nativeEvent }) => {
-        if (!isDrawing) return;
+        if (!isDrawing || currentRole !== 'Editor') return;
+
         const { offsetX, offsetY } = nativeEvent;
         const ctx = canvasRef.current.getContext('2d');
 
@@ -65,9 +92,8 @@ const Presentation = () => {
         }
     };
 
-    // Finish drawing
     const finishDrawing = ({ nativeEvent }) => {
-        if (!isDrawing) return;
+        if (!isDrawing || currentRole !== 'Editor') return;
 
         const { offsetX, offsetY } = nativeEvent;
         const ctx = canvasRef.current.getContext('2d');
@@ -83,7 +109,7 @@ const Presentation = () => {
         setIsDrawing(false);
     };
 
-    // Drawing functions
+    // Drawing helper functions
     const drawLine = (ctx, x0, y0, x1, y1, tool) => {
         ctx.beginPath();
         ctx.moveTo(x0, y0);
@@ -116,29 +142,56 @@ const Presentation = () => {
         });
     };
 
-    return (
-        <div>
-            <h2>Presentation: {presentationId}</h2>
+    const switchRole = (userId) => {
+        const updatedUsers = { ...users };
+        const user = updatedUsers[userId];
 
-            {/* Toolbar for selecting tools */}
-            <div className="toolbar">
-                <button onClick={() => setTool('pen')}>Pen</button>
-                <button onClick={() => setTool('rectangle')}>Rectangle</button>
-                <button onClick={() => setTool('circle')}>Circle</button>
-                <button onClick={() => setTool('eraser')}>Eraser</button>
-                <button onClick={exportToPDF}>Export to PDF</button>
+        if (user) {
+            user.role = user.role === 'Viewer' ? 'Editor' : 'Viewer';
+            setUsers(updatedUsers);
+            socket.emit('switch_role', { userId, presentationId, newRole: user.role });
+        }
+    };
+
+    return (
+        <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+            <div>
+                <h2>Presentation: {presentationId}</h2>
+                {currentRole === 'Editor' && (
+                    <div className="toolbar">
+                        <button onClick={() => setTool('pen')}>Pen</button>
+                        <button onClick={() => setTool('rectangle')}>Rectangle</button>
+                        <button onClick={() => setTool('circle')}>Circle</button>
+                        <button onClick={() => setTool('eraser')}>Eraser</button>
+                        <button onClick={exportToPDF}>Export to PDF</button>
+                    </div>
+                )}
+
+                <canvas
+                    ref={canvasRef}
+                    width={800}
+                    height={600}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={finishDrawing}
+                    onMouseLeave={finishDrawing}
+                    style={{ border: '1px solid black', marginRight: '20px' }}
+                />
             </div>
 
-            <canvas
-                ref={canvasRef}
-                width={800}
-                height={600}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={finishDrawing}
-                onMouseOut={finishDrawing}
-                style={{ border: '1px solid black' }}
-            />
+            <div style={{ flex: '1', marginLeft: '20px' }}>
+                <h3>Connected Users</h3>
+                <ul>
+                    {Object.entries(users).map(([userId, user]) => (
+                        <li key={userId}>
+                            {user.nickname} ({user.role}){' '}
+                            <button onClick={() => switchRole(userId)}>
+                                {user.role === 'Viewer' ? 'Make Editor' : 'Make Viewer'}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </div>
         </div>
     );
 };
