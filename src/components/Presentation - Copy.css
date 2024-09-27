@@ -70,29 +70,33 @@ canvas {
     flex-grow: 1;
     position: relative;
 }
+.presentation {
+    display: flex;
+}
 
-.presentation-container {
+
+
+.slides-container {
     display: flex;
 }
 
 .thumbnails {
     display: flex;
     flex-direction: column;
-    width: 100px; /* Adjust width as needed */
-    margin-left: 20px;
-    padding-left: 20px;
-    margin-right: 20px;
-    margin-top: 20px;
-    padding-top: 100px;
+    margin-right: 10px;
 }
 
 .thumbnail {
-    margin-bottom: 10px;
-    cursor: pointer;
-    padding: 5px;
+    padding: 10px;
     border: 1px solid #ccc;
+    margin-bottom: 5px;
+    cursor: pointer;
 }
 
 .thumbnail.active {
-    border: 2px solid blue; /* Indicate active slide */
+    background-color: #ddd;
+}
+
+.canvas-container {
+    position: relative;
 }
