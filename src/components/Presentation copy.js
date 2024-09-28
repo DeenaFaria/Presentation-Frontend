@@ -5,7 +5,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import './Presentation.css';
 
-const socket = io('https://collaborative-presentation-backend-1.onrender.com');
+const socket = io('https://collaborative-presentation-backend.onrender.com');
 
 const Presentation = () => {
     const canvasRef = useRef(null);
