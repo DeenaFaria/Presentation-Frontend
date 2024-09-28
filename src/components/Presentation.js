@@ -18,6 +18,8 @@ const Presentation = () => {
     const [currentRole, setCurrentRole] = useState(role);
     const [slides, setSlides] = useState([]); // Store slide data
     const [currentSlide, setCurrentSlide] = useState(0); // Track the current active slide
+        // Define state for the presentation list
+        const [presentations, setPresentations] = useState([]);
 
         // Function to create a new slide
         const createNewSlide = () => {
@@ -27,8 +29,51 @@ const Presentation = () => {
             };
         };
 
+        const handleDraw = (drawingData) => {
+            socket.emit('draw', currentSlide, drawingData); // Send drawing to server
+        };
+
+        const renderDrawings = (drawings) => {
+            const ctx = canvasRef.current.getContext('2d');
+            drawings.forEach((drawing) => {
+                if (drawing.tool === 'pen' || drawing.tool === 'eraser') {
+                    drawLine(ctx, drawing.x0, drawing.y0, drawing.x1, drawing.y1, drawing.tool);
+                } else if (drawing.tool === 'rectangle') {
+                    drawRectangle(ctx, drawing.x0, drawing.y0, drawing.width, drawing.height);
+                } else if (drawing.tool === 'circle') {
+                    drawCircle(ctx, drawing.x0, drawing.y0, drawing.radius);
+                }
+            });
+        };
+        
+        useEffect(() => {
+            // When switching slides, request to load the existing drawings for the selected slide
+            socket.emit('switch_slide', currentSlide);
+        
+            socket.on('load_drawings', (slideId, drawingData) => {
+                if (slideId === currentSlide) {
+                    // Render the existing drawings for this slide
+                    renderDrawings(drawingData);
+                }
+            });
+        
+            return () => {
+                socket.off('load_drawings');
+            };
+        }, [currentSlide]);
+                
+
     useEffect(() => {
         // Join the presentation when the component mounts
+
+            // Join the presentation when the component mounts
+    socket.emit('get_presentations'); // Request the presentation list
+
+    // Receive the presentation list and update the UI
+    socket.on('presentation_list', (presentations) => {
+        setPresentations(presentations); // Set the list of presentations in state
+    });
+
         socket.emit('join_presentation', { presentationId, nickname });
 
         // Receive the list of connected users
@@ -94,6 +139,7 @@ const Presentation = () => {
             socket.off('slide_added');
             socket.off('user_list');
             socket.off('role_updated');
+            socket.off('presentation_list');
         };
     }, [presentationId, nickname]);
 
@@ -336,9 +382,10 @@ const finishDrawing = ({ nativeEvent }) => {
                     {Object.entries(users).map(([userId, user]) => (
                         <li key={userId}>
                             {user.nickname} ({user.role}){' '}
+                            {currentRole === 'Editor' && (
                             <button onClick={() => switchRole(userId)}>
                                 {user.role === 'Viewer' ? 'Make Editor' : 'Make Viewer'}
-                            </button>
+                            </button>)}
                         </li>
                     ))}
                 </ul>
